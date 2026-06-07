@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string("title");
             $table->enum("type", ["essay", "option"])->default("essay");
             $table->integer("order");
+            $table->string("answer_key")->nullable();
             $table->boolean("is_quiz")->default(false);
             $table->timestamps();
         });

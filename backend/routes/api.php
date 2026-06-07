@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FormController;
+use App\Http\Controllers\FormResponseController;
 use App\Http\Controllers\FormSectionController;
 use App\Http\Controllers\SectionOptionController;
 use Illuminate\Http\Request;
@@ -33,6 +34,12 @@ Route::middleware("auth:sanctum")->group(function () {
 
     //options
     Route::post("/sections/{id}/options", [SectionOptionController::class, "store"]);
-    Route::update("/sections/{id}/options", [SectionOptionController::class, "update"]);
+    Route::put("/sections/{id}/options", [SectionOptionController::class, "update"]);
     Route::delete("/sections/{id}/options/{optId}", [SectionOptionController::class, "destroy"]);
+
+    Route::get("/forms/{slug}/summary", [FormResponseController::class, "summary"]);
 });
+
+//form submitting
+Route::post("/forms/{slug}/submit", [FormResponseController::class, "store"]);
+Route::get("/forms/{slug}/result/{responseId}", [FormResponseController::class, "show"]);

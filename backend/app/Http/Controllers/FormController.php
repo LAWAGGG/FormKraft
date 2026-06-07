@@ -30,7 +30,7 @@ class FormController extends Controller
         ]);
     }
 
-   
+
 
     /**
      * Show the form for creating a new resource.
@@ -91,10 +91,6 @@ class FormController extends Controller
             return $this->notFound();
         }
 
-        if ($form->user_id != Auth::guard("sanctum")->user()->id) {
-            return $this->forbidden();
-        }
-
         return response()->json([
             "id" => $form->id,
             "title" => $form->title,
@@ -106,13 +102,13 @@ class FormController extends Controller
                     "title" => $sect->title,
                     "type" => $sect->type,
                     "order" => $sect->order,
-                    "is_quiz" => $sect->is_quiz,
+                    "is_quiz" => $sect->is_quiz ? true : false,
                     ...($sect->type == "option" ? [
                         "options" => $sect->options->map(function ($opt) {
                             return [
                                 "id" => $opt->id,
                                 "option_text" => $opt->option_text,
-                                "is_correct" => $opt->is_correct,
+                                // "is_correct" => $opt->is_correct ? true : false,
                             ];
                         })
                     ] : [])

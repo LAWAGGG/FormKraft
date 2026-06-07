@@ -15,4 +15,8 @@ class Form extends Model
     public function user(){
         return $this->belongsTo(User::class, "user_id");
     }
+
+    public function responses(){
+        return $this->hasMany(FormResponse::class, "form_id");
+    }
 }

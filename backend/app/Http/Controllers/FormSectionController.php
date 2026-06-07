@@ -84,7 +84,8 @@ class FormSectionController extends Controller
         $val = Validator::make($request->all(), [
             "title" => "required",
             "type" => "required|in:essay,option",
-            "is_quiz" => "required|boolean"
+            "is_quiz" => "required|boolean",
+            "answer_key"=>"prohibited_if:type,option|string"
         ]);
 
         if ($val->fails()) {
@@ -152,9 +153,10 @@ class FormSectionController extends Controller
         }
 
         $val = Validator::make($request->all(), [
-            "title" => "required",
-            "type" => "required|in:essay,option",
-            "is_quiz" => "required|boolean"
+            "title" => "string",
+            "type" => "in:essay,option",
+            "is_quiz" => "boolean",
+            "answer_key"=>"prohibited_if:type,option|string"
         ]);
 
         if ($val->fails()) {

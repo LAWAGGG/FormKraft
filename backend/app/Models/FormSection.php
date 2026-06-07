@@ -15,4 +15,8 @@ class FormSection extends Model
     public function options(){
         return $this->hasMany(SectionOption::class, "section_id");
     }
+
+    public function answers(){
+        return $this->hasMany(ResponseAnswer::class, "section_id");
+    }
 }
