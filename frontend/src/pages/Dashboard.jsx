@@ -1,0 +1,142 @@
+import { useEffect, useState } from "react"
+import Navbar from "../components/Navbar"
+import api from "../api/api"
+import { Link } from "react-router-dom"
+
+export default function Dashboard() {
+    const [forms, setForms] = useState([])
+    const [isCreate, setIsCreate] = useState(false)
+    const [isDelete, setIsDelete] = useState(false)
+    const [slug, setSlug] = useState("")
+
+    //create
+    const [title, setTitle] = useState("")
+    const [description, setDesc] = useState("")
+
+    async function handleCreate(e) {
+        e.preventDefault()
+        api.post('/forms', {
+            title,
+            description
+        }).then(res => {
+            fetchForms()
+            setIsCreate(false)
+        }).catch(error => alert(error.response.data.message))
+    }
+
+    async function fetchForms() {
+        api.get('/forms').then(res => {
+            setForms(res.data.forms)
+        })
+    }
+
+    async function handleDelete() {
+        api.delete(`/forms/${slug}`).then(res => {
+            setIsDelete(false)
+            fetchForms()
+        }).catch(error => alert(error.response.data.message))
+    }
+
+    useEffect(() => {
+        document.title = "Dashboard | FormKraft"
+        fetchForms()
+    }, [])
+    return (
+        <>
+            <Navbar></Navbar>
+            <main class="page-wrapper container container--wide">
+                <div class="page-content">
+
+                    <div class="page-header">
+                        <div class="page-header-info">
+                            <h1>My Forms</h1>
+                            <p>Manage all your forms and quizzes in one place.</p>
+                        </div>
+                        <div class="btn-group">
+                            <button onClick={() => setIsCreate(true)} class="btn btn-primary">Create Form</button>
+                        </div>
+                    </div>
+
+                    {
+                        forms.length == 0 ? (
+                            <div class="empty-state animate-fade-in-up">
+                                <div class="empty-state-icon">📋</div>
+                                <h3>No forms yet</h3>
+                                <p>You haven't created any forms. Click the button below to start building your first form.</p>
+                                <button class="btn btn-primary">Create New Form</button>
+                            </div>
+                        ) : (
+                            <div class="forms-grid animate-fade-in-up">
+
+                                {
+                                    forms.map((form, i) => (
+                                        <div key={i} class="form-card form-card--interactive">
+                                            <div class="form-card-accent"></div>
+                                            <div class="form-card-body">
+                                                <h3 class="form-card-title">{form.title}</h3>
+                                                <p class="form-card-description">{form.description}</p>
+                                                <div class="form-card-meta">
+                                                    <div class="form-card-meta-item">
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                                        {form.total_questions} Questions
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="form-card-footer">
+                                                <Link to={`/${form.slug}/responses`} class="btn btn-secondary btn-sm flex-1">View Responses</Link>
+                                                <Link to={`/${form.slug}`} class="btn btn-primary btn-sm flex-1">Edit Form</Link>
+                                                <button onClick={() => { setIsDelete(true); setSlug(form.slug) }} className="btn btn-danger">Delete</button>
+                                            </div>
+                                        </div>
+                                    ))
+                                }
+                            </div>
+                        )
+                    }
+
+                </div>
+            </main>
+
+            <div class={`modal-overlay ${isCreate ? "" : "hide"}`} id="createFormModal">
+                <form onSubmit={e => handleCreate(e)} class="modal">
+                    <div class="modal-header">
+                        <h3>Create New Form</h3>
+                        <button type="button" onClick={()=>setIsCreate(false)} class="modal-close">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="createForm">
+                            <div class="form-group">
+                                <label class="form-label" for="formTitle">Form Title</label>
+                                <input onChange={e => setTitle(e.target.value)} type="text" id="formTitle" class="form-input" placeholder="e.g. Customer Feedback Survey" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="formDescription">Description</label>
+                                <textarea onChange={e => setDesc(e.target.value)} id="formDescription" class="form-textarea" placeholder="Briefly describe the purpose of this form..." style={{ "min-height": "80px" }}></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" onClick={()=>setIsCreate(false)} class="btn btn-secondary">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Form</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class={`modal-overlay ${isDelete ? "" : "hide"}`} id="deleteFormModal">
+                <div class="modal">
+                    <div class="modal-header">
+                        <h3>Delete Form?</h3>
+                        <button onClick={() => { setIsDelete(false); setSlug("") }} class="modal-close">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to delete this form? All associated responses will also be deleted. This action cannot be undone.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button onClick={() => { setIsDelete(false); setSlug("") }} class="btn btn-secondary">Cancel</button>
+                        <button onClick={() => handleDelete()} class="btn btn-danger">Delete Form</button>
+                    </div>
+                </div>
+            </div>
+        </>
+    )
+}
