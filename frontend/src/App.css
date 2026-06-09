@@ -548,7 +548,7 @@ h6 { font-size: var(--font-base); font-weight: 600; }
 
 .form-error {
   font-size: var(--font-xs);
-  color: var(--error);
+  color: var(--error) !important;
   font-weight: 500;
 }
 
