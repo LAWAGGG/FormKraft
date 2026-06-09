@@ -72,7 +72,11 @@ class FormResponseController extends Controller
             }
         }
 
-        $scorePerQuestion = round(100 / $totalQuestion, 2);
+        if ($totalQuestion > 0) {
+            $scorePerQuestion = round(100 / $totalQuestion, 2);
+        } else {
+            $scorePerQuestion = 0;
+        }
 
         $correctAnswers = 0;
         foreach ($request->answers as $answer) {
@@ -108,20 +112,33 @@ class FormResponseController extends Controller
                         "response_id" => $formResponse->id,
                         "section_id" => $section->id,
                         "section_option_id" => null,
-                        "answer_text" => $answer["answer_text"],
+                        "answer_text" => $answer["answer_text"] ?? null,
                         "is_correct" => $isCorrect ? true : false,
                         "score" => $isCorrect ? $scorePerQuestion : 0,
                     ]);
                 }
             } else {
-                ResponseAnswer::create([
-                    "response_id" => $formResponse->id,
-                    "section_id" => $section->id,
-                    "section_option_id" => null,
-                    "answer_text" => $answer["answer_text"],
-                    "is_correct" => false,
-                    "score" => 0
-                ]);
+                if ($section->type == "option") {
+                    $optionSelected = $section->options->find($answer["section_option_id"]);
+
+                    ResponseAnswer::create([
+                        "response_id" => $formResponse->id,
+                        "section_id" => $section->id,
+                        "section_option_id" => $optionSelected->id,
+                        "answer_text" => null,
+                        "is_correct" => $optionSelected->is_correct ?? true,
+                        "score" => 0,
+                    ]);
+                } else {
+                    ResponseAnswer::create([
+                        "response_id" => $formResponse->id,
+                        "section_id" => $section->id,
+                        "section_option_id" => null,
+                        "answer_text" => $answer["answer_text"] ?? null,
+                        "is_correct" => true,
+                        "score" => 0,
+                    ]);
+                }
             }
         }
 
@@ -155,23 +172,44 @@ class FormResponseController extends Controller
             return $this->notFound();
         }
 
-        $result = FormResponse::with(["answers.section.options", "form", "user"])->where("form_id", $form->id)->find($responseId);
+        $result = FormResponse::with(["answers.section.options", "answers.option", "form", "user"])->where("form_id", $form->id)->find($responseId);
 
         if (!$result) {
             return $this->notFound();
         }
 
+        $isQuiz = $result->answers->contains(function ($answ) {
+            return $answ->section && $answ->section->is_quiz == 1;
+        });
+
+        $totalCorrect = 0;
+        $totalIncorrect = 0;
+
+        if ($isQuiz) {
+            $totalCorrect = $result->answers->filter(function ($answ) {
+                return $answ->section && $answ->section->is_quiz == 1 && $answ->is_correct == 1;
+            })->count();
+
+            $totalIncorrect = $result->answers->filter(function ($answ) {
+                return $answ->section && $answ->section->is_quiz == 1 && $answ->is_correct == 0;
+            })->count();
+        }
+
         return response()->json([
             "form" => $result->form,
             "user" => $result->user,
+            "form_type" => $isQuiz ? "quiz" : "survey",
             "total_score" => $result->total_score,
+            "completed_at" => $result->completed_at,
+            "total_correct" => $totalCorrect,
+            "total_incorrect" => $totalIncorrect,
             "answers" => $result->answers->map(function ($answer) {
                 return [
                     "id" => $answer->id,
                     "is_correct" => $answer->is_correct ? true : false,
                     "score" => $answer->score,
                     "type" => $answer->section->type,
-                    "section_option_id" => $answer->section_option_id,
+                    "option" => $answer->option,
                     ...($answer->section->type == "essay" ? [
                         "answer_text" => $answer->answer_text
                     ] : []),
@@ -189,22 +227,35 @@ class FormResponseController extends Controller
                                     "is_correct" => $opt->is_correct ? true : false,
                                 ];
                             })
+                        ] : []),
+                        ...($answer->section->type == "essay" && $answer->section->is_quiz == 1 ? [
+                            "answer_key" => $answer->section->answer_key
                         ] : [])
                     ],
 
                 ];
             })
+
+            // ...($isQuiz ? [
+
+            // ] : [
+            //     "form_type" => "survey",
+            //     "completed_at" => $result->completed_at,
+            //     "form" => $result->form,
+            //     "message" => "Thankyou for contributing to this {$result->form->title} form!"
+            // ]),
         ]);
     }
 
-    public function summary($slug){
+    public function summary($slug)
+    {
         $form = Form::with("responses.user")->where("slug", $slug)->first();
 
         if (!$form) {
             return $this->notFound();
         }
 
-        if($form->user_id != Auth::guard("sanctum")->user()->id){
+        if ($form->user_id != Auth::guard("sanctum")->user()->id) {
             return $this->forbidden();
         }
 
@@ -214,24 +265,24 @@ class FormResponseController extends Controller
         $lowestScore = $form->responses()->min("total_score");
 
         return response()->json([
-            "form"=>[
-                "id"=>$form->id,
-                "title"=>$form->title,
-                "slug"=>$form->slug,
-                "description"=>$form->description,
+            "form" => [
+                "id" => $form->id,
+                "title" => $form->title,
+                "slug" => $form->slug,
+                "description" => $form->description,
             ],
-            "summary"=>[
-                "total_respondents"=>$totalRespondents,
-                "average_scores"=>$averageScore,
-                "highest_score"=>$highestScore,
-                "lowest_score"=>$lowestScore,
+            "summary" => [
+                "total_respondents" => $totalRespondents,
+                "average_scores" => $averageScore,
+                "highest_score" => $highestScore,
+                "lowest_score" => $lowestScore,
             ],
-            "responses"=>$form->responses->map(function($res){
-                return[
-                    "id"=>$res->id,
-                    "user"=>$res->user,
-                    "total_score"=>$res->total_score,
-                    "completed_at"=>$res->completed_at,
+            "responses" => $form->responses->map(function ($res) {
+                return [
+                    "id" => $res->id,
+                    "user" => $res->user,
+                    "total_score" => $res->total_score,
+                    "completed_at" => $res->completed_at,
                 ];
             })
         ]);
@@ -256,8 +307,22 @@ class FormResponseController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(FormResponse $formResponse)
+    public function destroy($id)
     {
-        //
+        $response = FormResponse::with("form")->find($id);
+
+        if(!$response){
+            return $this->notFound();
+        }
+
+        if($response->form->user_id != Auth::guard("sanctum")->user()->id){
+            return $this->forbidden();
+        }
+
+        $response->delete();
+
+        return response()->json([
+            "message"=>"Response deleted succesfully"
+        ]);
     }
 }

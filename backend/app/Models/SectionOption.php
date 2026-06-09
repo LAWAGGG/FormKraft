@@ -10,6 +10,6 @@ class SectionOption extends Model
 
     public function answers()
     {
-        return $this->hasMany(ResponseAnswer::class, "section_id");
+        return $this->hasMany(ResponseAnswer::class, "section_option_id");
     }
 }

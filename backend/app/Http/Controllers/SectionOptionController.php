@@ -94,7 +94,7 @@ class SectionOptionController extends Controller
         $val = Validator::make($request->all(), [
             "options" => "required|array",
             "options.*.id" => "required|exists:section_options,id",
-            "options.*.option_text" => "required|string",
+            "options.*.option_text" => "nullable",
             "options.*.is_correct" => "required|boolean",
         ]);
 
@@ -110,7 +110,7 @@ class SectionOptionController extends Controller
             }
         }
 
-        if(($correctCount > 1 || $correctCount <= 0) && $section->is_quiz){
+        if(($correctCount > 1) && $section->is_quiz){
             return response()->json([
                 "message"=>"Each question must have exactly one correct answer"
             ],403);

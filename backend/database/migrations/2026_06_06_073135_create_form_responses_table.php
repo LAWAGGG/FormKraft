@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('form_responses', function (Blueprint $table) {
             $table->id();
             $table->foreignId("form_id")->constrained()->onDelete("cascade");
-            $table->foreignId("user_id")->nullable()->constrained()->onDelete("cascade");
+            $table->foreignId("user_id")->constrained()->onDelete("cascade");
             $table->integer("total_score")->default(0);
             $table->timestamp("completed_at");
             $table->timestamps();

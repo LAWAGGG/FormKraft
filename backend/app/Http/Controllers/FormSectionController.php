@@ -7,6 +7,7 @@ use App\Models\FormSection;
 use App\Models\SectionOption;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class FormSectionController extends Controller
@@ -41,7 +42,7 @@ class FormSectionController extends Controller
 
         $val = Validator::make($request->all(), [
             "sections" => "required|array",
-            "sections.*"=>"required|exists:form_sections,id"
+            "sections.*" => "required|exists:form_sections,id"
         ]);
 
         if ($val->fails()) {
@@ -49,20 +50,20 @@ class FormSectionController extends Controller
         }
 
         $pos = 0;
-        foreach($request->sections as $sect){
+        foreach ($request->sections as $sect) {
             $section = FormSection::where("form_id", $form->id)->find($sect);
-            if(!$section){
+            if (!$section) {
                 return $this->notFound();
             }
 
             $pos++;
             $section->update([
-                "order"=>$pos
+                "order" => $pos
             ]);
         }
 
         return response()->json([
-            "message"=>"Sections reordered succesfully"
+            "message" => "Sections reordered succesfully"
         ]);
     }
 
@@ -85,7 +86,7 @@ class FormSectionController extends Controller
             "title" => "required",
             "type" => "required|in:essay,option",
             "is_quiz" => "required|boolean",
-            "answer_key"=>"prohibited_if:type,option|string"
+            "answer_key" => "nullable"
         ]);
 
         if ($val->fails()) {
@@ -99,12 +100,12 @@ class FormSectionController extends Controller
         $data["order"] = $lastOrder ? $lastOrder->order + 1 : 0;
         $section = FormSection::create($data);
 
-        if($request->type == "option"){
-            for($i = 0; $i < 4; $i++){
+        if ($request->type == "option") {
+            for ($i = 0; $i < 4; $i++) {
                 SectionOption::create([
-                    "section_id"=>$section->id,
-                    "option_text"=>null,
-                    "is_correct"=>false
+                    "section_id" => $section->id,
+                    "option_text" => null,
+                    "is_correct" => false
                 ]);
             }
         }
@@ -129,6 +130,42 @@ class FormSectionController extends Controller
     public function edit(FormSection $formSection)
     {
         //
+    }
+
+    public function duplicate($id)
+    {
+        $section = FormSection::with("form", "options")->find($id);
+
+        if (!$section) {
+            return $this->notFound();
+        }
+
+        if($section->form->user_id != Auth::guard("sanctum")->user()->id){
+            return $this->forbidden();
+        }
+
+        $cloneSect = FormSection::create([
+            "form_id"=>$section->form->id,
+            "title"=>$section->title,
+            "type"=>$section->type,
+            "order"=>$section->order,
+            "answer_key"=>$section->answer_key,
+            "is_quiz"=>$section->is_quiz
+        ]);
+
+        if($section->type == "option"){
+            foreach($section->options as $opt){
+                SectionOption::create([
+                    "section_id"=>$cloneSect->id,
+                    "option_text"=>$opt->option_text,
+                    "is_correct"=>$opt->is_correct,
+                ]);
+            }
+        }
+
+        return response()->json([
+            "message"=>"Sections Duplicate succesfully"
+        ]);
     }
 
     /**
@@ -156,14 +193,33 @@ class FormSectionController extends Controller
             "title" => "string",
             "type" => "in:essay,option",
             "is_quiz" => "boolean",
-            "answer_key"=>"prohibited_if:type,option|string"
+            "answer_key" => "nullable"
         ]);
 
         if ($val->fails()) {
             return $this->validateError($val);
         }
 
-        $section->update($request->all());
+        $data = $request->all();
+        DB::transaction(function () use ($section, $request, $data) {
+            if ($section->type == "option" && $request->type == "essay") {
+                SectionOption::where("section_id", $section->id)->delete();
+            }
+
+            if ($section->type == "essay" && $request->type == "option") {
+                $data["answer_key"] = null;
+
+                for ($i = 0; $i < 4; $i++) {
+                    SectionOption::create([
+                        "section_id" => $section->id,
+                        "option_text" => null,
+                        "is_correct" => false
+                    ]);
+                }
+            }
+
+            $section->update($data);
+        });
 
         return response()->json([
             "message" => "Section updated succesfully",

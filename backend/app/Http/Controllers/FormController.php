@@ -91,24 +91,32 @@ class FormController extends Controller
             return $this->notFound();
         }
 
+        $user = Auth::guard("sanctum")->id();
+
         return response()->json([
             "id" => $form->id,
             "title" => $form->title,
             "slug" => $form->slug,
             "description" => $form->description,
-            "sections" => $form->sections->map(function ($sect) {
+            "sections" => $form->sections->map(function ($sect) use ($form, $user) {
+                // dd($sect->is_quiz, $sect->type == "essay", $form->user_id == Auth::guard("sanctum")->user()->id);
                 return [
                     "id" => $sect->id,
                     "title" => $sect->title,
                     "type" => $sect->type,
+                    ...($sect->type == "essay" && $sect->is_quiz && $form->user_id == $user  ? [
+                        "answer_key"=>$sect->answer_key
+                    ] : []),
                     "order" => $sect->order,
                     "is_quiz" => $sect->is_quiz ? true : false,
                     ...($sect->type == "option" ? [
-                        "options" => $sect->options->map(function ($opt) {
+                        "options" => $sect->options->map(function ($opt) use($form, $user) {
                             return [
                                 "id" => $opt->id,
                                 "option_text" => $opt->option_text,
-                                // "is_correct" => $opt->is_correct ? true : false,
+                                ...($form->user_id == $user ? [
+                                    "is_correct" => $opt->is_correct ? true : false,
+                                ] : [])
                             ];
                         })
                     ] : [])

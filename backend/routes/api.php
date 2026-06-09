@@ -23,7 +23,6 @@ Route::middleware("auth:sanctum")->group(function () {
     Route::post('/forms', [FormController::class, "store"]);
     Route::put('/forms/{slug}', [FormController::class, "update"]);
     Route::delete('/forms/{slug}', [FormController::class, "destroy"]);
-    Route::get('/forms/{slug}', [FormController::class, "show"]);
     Route::get('/forms', [FormController::class, "index"]);
 
     //form sections
@@ -31,15 +30,17 @@ Route::middleware("auth:sanctum")->group(function () {
     Route::put("/forms/{slug}/sections/{id}", [FormSectionController::class, "update"]);
     Route::put("/forms/{slug}/reorder", [FormSectionController::class, "reorder"]);
     Route::delete("/forms/{slug}/sections/{id}", [FormSectionController::class, "destroy"]);
+    Route::get('/forms/{slug}', [FormController::class, "show"]);
+    Route::post('/sections/{id}/duplicate', [FormSectionController::class, "duplicate"]);
 
     //options
     Route::post("/sections/{id}/options", [SectionOptionController::class, "store"]);
     Route::put("/sections/{id}/options", [SectionOptionController::class, "update"]);
     Route::delete("/sections/{id}/options/{optId}", [SectionOptionController::class, "destroy"]);
 
+    //form response
+    Route::post("/forms/{slug}/submit", [FormResponseController::class, "store"]);
+    Route::get("/forms/{slug}/result/{responseId}", [FormResponseController::class, "show"]);
     Route::get("/forms/{slug}/summary", [FormResponseController::class, "summary"]);
+    Route::delete("/response/{id}", [FormResponseController::class, "destroy"]);
 });
-
-//form submitting
-Route::post("/forms/{slug}/submit", [FormResponseController::class, "store"]);
-Route::get("/forms/{slug}/result/{responseId}", [FormResponseController::class, "show"]);
