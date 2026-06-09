@@ -98,7 +98,7 @@ export default function FormResult() {
                                                 {answ.answer_text}
                                             </div>
                                             {
-                                                answ.section?.is_quiz ? (
+                                                answ.section?.is_quiz && answ.section?.answer_key != null ? (
                                                     <div class="answer-key-field">
                                                         {
                                                             answ.section.answer_key != null && (
@@ -108,7 +108,7 @@ export default function FormResult() {
                                                                 </span>
                                                             )
                                                         }
-                                                        <span class="answer-key-value">{answ.section.answer_key ?? "Manual Correct"}</span>
+                                                        <span class="answer-key-value">{answ.section.answer_key}</span>
                                                     </div>
                                                 ) : ""
                                             }

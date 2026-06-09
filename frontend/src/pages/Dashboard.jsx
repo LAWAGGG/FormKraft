@@ -63,7 +63,7 @@ export default function Dashboard() {
                                 <div class="empty-state-icon">📋</div>
                                 <h3>No forms yet</h3>
                                 <p>You haven't created any forms. Click the button below to start building your first form.</p>
-                                <button class="btn btn-primary">Create New Form</button>
+                                <button class="btn btn-primary" onClick={()=>setIsCreate(true)}>Create New Form</button>
                             </div>
                         ) : (
                             <div class="forms-grid animate-fade-in-up">

@@ -68,7 +68,7 @@ export default function Login() {
                             {errors["password"] && <p className="form-error">{errors["password"]}</p>}
                         </div>
 
-                        <button type="submit" class="btn btn-primary btn-full btn-lg mt-4">Sign Up</button>
+                        <button type="submit" class="btn btn-primary btn-full btn-lg mt-4">Sign In</button>
                     </form>
 
                     <div class="auth-footer">
