@@ -2232,3 +2232,37 @@ h6 { font-size: var(--font-base); font-weight: 600; }
   width: 18px;
   height: 18px;
 }
+
+/* ── Drag and Drop Enhancements ────────────────────────────── */
+.is-dragging-placeholder {
+  opacity: 0.4;
+  border: 2px dashed var(--primary);
+  background: var(--primary-light);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.is-dragging-placeholder > * {
+  opacity: 0;
+}
+
+.section-card-overlay {
+  cursor: grabbing;
+  box-shadow: var(--shadow-xl), 0 0 0 2px var(--primary);
+  transform: scale(1.02);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  opacity: 0.95;
+}
+
+.is-dragging-overlay {
+  pointer-events: none;
+}
+
+.section-drag {
+  cursor: grab;
+}
+
+.section-drag:active {
+  cursor: grabbing;
+}
