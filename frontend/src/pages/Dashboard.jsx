@@ -83,9 +83,8 @@ export default function Dashboard() {
                                                 </div>
                                             </div>
                                             <div class="form-card-footer">
-                                                <Link to={`/${form.slug}/responses`} class="btn btn-secondary btn-sm flex-1">View Responses</Link>
-                                                <Link to={`/${form.slug}`} class="btn btn-primary btn-sm flex-1">Edit Form</Link>
-                                                <button onClick={() => { setIsDelete(true); setSlug(form.slug) }} className="btn btn-danger">Delete</button>
+                                                <Link to={`/${form.slug}`} class="btn btn-primary btn-sm flex-1">Manage Form</Link>
+                                                <button onClick={() => { setIsDelete(true); setSlug(form.slug) }} className="btn btn-danger btn-sm">Delete</button>
                                             </div>
                                         </div>
                                     ))

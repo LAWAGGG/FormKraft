@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import Navbar from "../components/Navbar"
 import { Link, useParams } from "react-router-dom"
 import api from "../api/api"
+import FormTabs from "../components/FormTabs"
 
 export default function FormResponses() {
     const params = useParams()
@@ -35,12 +36,9 @@ export default function FormResponses() {
                     <div class="flex items-center justify-between mb-6 animate-slide-in">
                         <Link to={'/dashboard'} class="btn btn-secondary">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style={{ "margin-right": "8px" }}><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                            Back to Dashboard
+                            Back
                         </Link>
-                        <div class="flex gap-2">
-                            <Link to={`/${params.slug}`} class="btn btn-secondary">Edit Form</Link>
-                            <Link to={`/${params.slug}/fill`} class="btn btn-primary" target="_blank">Preview</Link>
-                        </div>
+                        <FormTabs slug={params.slug} activeTab="responses" />
                     </div>
 
                     <div class="responses-header animate-slide-in">

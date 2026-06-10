@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import Navbar from "../components/Navbar"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import api from "../api/api"
+import FormTabs from "../components/FormTabs"
 
 export default function FormBuilder() {
     const params = useParams()
@@ -180,11 +181,9 @@ export default function FormBuilder() {
                     <div class="flex items-center justify-between mb-6 animate-slide-in">
                         <Link to={'/dashboard'} class="btn btn-secondary">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style={{ "margin-right": "8px" }}><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                            Back to Dashboard
+                            Back
                         </Link>
-                        <div class="flex gap-2">
-                            <Link to={`/${params.slug}/fill`} class="btn btn-ghost" target="_blank">Preview</Link>
-                        </div>
+                        <FormTabs slug={params.slug} activeTab="questions" />
                     </div>
 
                     <form onSubmit={e => handleUpdateForm(e)} class="card mb-6 animate-slide-in">
@@ -366,10 +365,9 @@ export default function FormBuilder() {
                                 )
                             })
                         }
-
                     </div>
 
-                    <button onClick={() => setIsCreate(true)} class="add-section-btn mt-6">
+                    <button onClick={() => {setIsCreate(true); setSectId("")}} class="add-section-btn mt-6">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         Add New Question
                     </button>
