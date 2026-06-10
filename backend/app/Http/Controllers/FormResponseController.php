@@ -235,21 +235,12 @@ class FormResponseController extends Controller
 
                 ];
             })
-
-            // ...($isQuiz ? [
-
-            // ] : [
-            //     "form_type" => "survey",
-            //     "completed_at" => $result->completed_at,
-            //     "form" => $result->form,
-            //     "message" => "Thankyou for contributing to this {$result->form->title} form!"
-            // ]),
         ]);
     }
 
     public function summary($slug)
     {
-        $form = Form::with("responses.user")->where("slug", $slug)->first();
+        $form = Form::with("responses.user", "sections", "responses.answers.section.options")->where("slug", $slug)->first();
 
         if (!$form) {
             return $this->notFound();
@@ -259,10 +250,43 @@ class FormResponseController extends Controller
             return $this->forbidden();
         }
 
+        $isQuiz = $form->sections->contains(function ($sect) {
+            return $sect->is_quiz == true;
+        });
+
+        $type = $isQuiz ? "quiz" : "survey";
         $totalRespondents = $form->responses()->count();
         $averageScore = round($form->responses()->average("total_score"), 1);
         $highestScore = $form->responses()->max("total_score");
         $lowestScore = $form->responses()->min("total_score");
+
+
+        $chartResponses = $form->responses
+            ->flatMap(fn($res) => $res->answers)
+            ->filter(
+                fn($ans) =>
+                // $ans->section?->is_quiz == true &&
+                    $ans->section->type == "option"
+            )->groupBy("section_id")
+            ->map(function ($answers, $sectionId) {
+                $section = $answers->first()->section;
+
+                $answerCounts = $answers->countBy("section_option_id");
+
+                return [
+                    "section_id"    => $sectionId,
+                    "section_title" => $section->title,
+                    "total_answers" => $answers->count(),
+                    "options"       => $section->options->map(function ($opt) use ($answerCounts) {
+                        return [
+                            "id"          => $opt->id,
+                            "option_text" => $opt->option_text,
+                            "is_correct"  => (bool) $opt->is_correct,
+                            "count"       => $answerCounts[$opt->id] ?? 0, // berapa kali dipilih
+                        ];
+                    }),
+                ];
+            })->values();
 
         return response()->json([
             "form" => [
@@ -270,6 +294,7 @@ class FormResponseController extends Controller
                 "title" => $form->title,
                 "slug" => $form->slug,
                 "description" => $form->description,
+                "type" => $type
             ],
             "summary" => [
                 "total_respondents" => $totalRespondents,
@@ -277,6 +302,7 @@ class FormResponseController extends Controller
                 "highest_score" => $highestScore,
                 "lowest_score" => $lowestScore,
             ],
+            "charts" => $chartResponses,
             "responses" => $form->responses->map(function ($res) {
                 return [
                     "id" => $res->id,
@@ -311,18 +337,18 @@ class FormResponseController extends Controller
     {
         $response = FormResponse::with("form")->find($id);
 
-        if(!$response){
+        if (!$response) {
             return $this->notFound();
         }
 
-        if($response->form->user_id != Auth::guard("sanctum")->user()->id){
+        if ($response->form->user_id != Auth::guard("sanctum")->user()->id) {
             return $this->forbidden();
         }
 
         $response->delete();
 
         return response()->json([
-            "message"=>"Response deleted succesfully"
+            "message" => "Response deleted succesfully"
         ]);
     }
 }
