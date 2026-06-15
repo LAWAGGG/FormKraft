@@ -7,6 +7,7 @@ use App\Models\SectionOption;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Storage;
 
 class SectionOptionController extends Controller
 {
@@ -41,10 +42,10 @@ class SectionOptionController extends Controller
             return $this->forbidden();
         }
 
-        $questionCount = SectionOption::where("section_id", $section->id)->count();
-        if ($questionCount >= 4) {
+        $optionCount = SectionOption::where("section_id", $section->id)->count();
+        if ($optionCount >= 10) { // Increased limit for flexibility
             return response()->json([
-                "message" => "you cannot add options more than 4!"
+                "message" => "you cannot add options more than 10!"
             ], 403);
         }
 
@@ -58,6 +59,40 @@ class SectionOptionController extends Controller
             "message" => "Option created succesfully",
             "data" => $option
         ], 201);
+    }
+
+    public function uploadImage(Request $request, $id)
+    {
+        $option = SectionOption::find($id);
+
+        if (!$option) {
+            return $this->notFound();
+        }
+
+        $section = FormSection::with("form")->find($option->section_id);
+        if ($section->form->user_id != Auth::guard("sanctum")->user()->id) {
+            return $this->forbidden();
+        }
+
+        $val = Validator::make($request->all(), [
+            "image" => "required|image|mimes:jpeg,png,jpg,gif,svg|max:2048",
+        ]);
+
+        if ($val->fails()) {
+            return $this->validateError($val);
+        }
+
+        if ($option->image_path) {
+            Storage::disk('public')->delete($option->image_path);
+        }
+
+        $path = $request->file('image')->store('options', 'public');
+        $option->update(['image_path' => $path]);
+
+        return response()->json([
+            "message" => "Option image uploaded succesfully",
+            "image_url" => asset('storage/' . $path)
+        ]);
     }
 
     /**
@@ -103,17 +138,17 @@ class SectionOptionController extends Controller
         }
 
         $correctCount = 0;
-
         foreach ($request->options as $opt) {
             if($opt["is_correct"] == true){
                 $correctCount++;
             }
         }
 
-        if(($correctCount > 1) && $section->is_quiz){
+        // Only enforce single correct answer for 'option' (radio) and 'dropdown'
+        if (($section->type == "option" || $section->type == "dropdown") && $correctCount > 1 && $section->is_quiz) {
             return response()->json([
-                "message"=>"Each question must have exactly one correct answer"
-            ],403);
+                "message" => "This question type must have exactly one correct answer"
+            ], 403);
         }
 
         foreach ($request->options as $opt) {
@@ -136,15 +171,14 @@ class SectionOptionController extends Controller
                 "type" => $section->type,
                 "order" => $section->order,
                 "is_quiz" => $section->is_quiz,
-                ...($section->type == "option" ? [
-                    "options" => $section->options->map(function ($opt) {
-                        return [
-                            "id" => $opt->id,
-                            "option_text" => $opt->option_text,
-                            "is_correct" => $opt->is_correct,
-                        ];
-                    })
-                ] : [])
+                "options" => $section->options->map(function ($opt) {
+                    return [
+                        "id" => $opt->id,
+                        "option_text" => $opt->option_text,
+                        "image_url" => $opt->image_url,
+                        "is_correct" => $opt->is_correct,
+                    ];
+                })
             ]
         ]);
     }
@@ -170,12 +204,16 @@ class SectionOptionController extends Controller
             return $this->notFound();
         }
 
+        if ($opt->image_path) {
+            Storage::disk('public')->delete($opt->image_path);
+        }
+
         $totalOpt = SectionOption::where("section_id", $section->id)->count();
 
         if($totalOpt < 2){
             return response()->json([
                 "message"=>"the options cannot less than 2"
-            ],201);
+            ],403); // Fixed 201 to 403
         }
 
         $opt->delete();

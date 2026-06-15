@@ -1,160 +1,171 @@
 import { useEffect, useRef, useState } from "react"
-import { useParams } from "react-router-dom"
+import { Link, useParams } from "react-router-dom"
 import api from "../api/api"
 
 export default function FormResult() {
     const params = useParams()
     const [result, setResult] = useState({})
-    const scoreLevel = useRef("score-low")
-    const score = useRef(0)
+    const [scoreOffset, setScoreOffset] = useState(440)
+    const [scoreLevel, setScoreLevel] = useState("score-low")
 
     async function fetchResult() {
         api.get(`/forms/${params.slug}/result/${params.id}`).then(res => {
             setResult(res.data)
+            
+            // Calculate score visualization
+            const s = res.data.total_score || 0
+            const offset = 440 - (440 * s) / 100
+            setScoreOffset(offset)
+
+            if (s >= 70) setScoreLevel("score-high")
+            else if (s >= 50) setScoreLevel("score-mid")
+            else setScoreLevel("score-low")
         })
     }
 
     useEffect(() => {
-        if (result.form_type == "quiz") {
-            if (result?.total_score >= 70) {
-                scoreLevel.current = "score-high"
-            } else if (result?.total_score >= 50) {
-                scoreLevel.current = "score-mid"
-            } else {
-                scoreLevel.current = "score-low"
-            }
-
-            score.current = Math.round((result.total_score / 100) - 1)
-            console.log(scoreLevel.current)
-        }
-    }, [result])
-
-    useEffect(() => {
-        document.title = "FormResult | FormKraft"
-
+        document.title = "Form Result | FormKraft"
         fetchResult()
     }, [])
+
     return (
         <>
-            <main class="page-wrapper container container--narrow result-page">
-                <div class="result-hero animate-slide-in">
-                    <div class="result-hero-top">
+            <main className="page-wrapper container container--narrow result-page">
+                <div className="result-hero animate-slide-in">
+                    <div className="result-hero-top">
                         <h2>{result.form?.title}</h2>
-                        <p>Submitted on {result.completed_at}</p>
+                        <p>Submitted on {result.completed_at ? new Date(result.completed_at).toLocaleString() : '...'}</p>
                     </div>
 
-                    {
-                        result.form_type == "quiz" ? (
-                            <div class="result-score-section">
-                                <div class="score-display">
-                                    <div class="score-circle">
-                                        <svg>
-                                            <circle class="score-circle-bg" cx="80" cy="80" r="70"></circle>
-                                            <circle class={`score-circle-fill ${scoreLevel.current}`} cx="80" cy="80" r="70" style={{ "stroke-dashoffset": `${score.current}` }}></circle>
-                                        </svg>
-                                        <div class="score-value">
-                                            <span class="score-number">{result.total_score}</span>
-                                            <span class="score-label">out of 100</span>
-                                        </div>
-                                    </div>
+                    <div className="result-score-section">
+                        <div className="score-display">
+                            <div className="score-circle">
+                                <svg viewBox="0 0 160 160">
+                                    <circle className="score-circle-bg" cx="80" cy="80" r="70"></circle>
+                                    <circle 
+                                        className={`score-circle-fill ${scoreLevel}`} 
+                                        cx="80" cy="80" r="70" 
+                                        style={{ strokeDashoffset: scoreOffset }}
+                                    ></circle>
+                                </svg>
+                                <div className="score-value">
+                                    <span className="score-number">{result.total_score}</span>
+                                    <span className="score-label">Total Score</span>
                                 </div>
                             </div>
-                        ) : (
-                            <div className="result-score-section">
-                                <p>Thankyou for contributing to {result.form?.title} form!</p>
-                            </div>
-                        )
-                    }
-
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <div class="mb-4 flex items-center justify-between">
-                        <h3 class="text-lg font-bold">Answer Review</h3>
-                        {
-                            result.form_type == "quiz" && (
-                                <div class="flex gap-2 text-xs font-medium">
-                                    <span class="text-success">{result.total_correct} Correct</span>
-                                    <span class="text-muted">•</span>
-                                    <span class="text-error">{result.total_incorrect} Incorrect</span>
-                                </div>
-                            )
-                        }
-                    </div>
 
-                    <div class="answer-list stagger-children">
-                        {
-                            result.answers?.map((answ, i) => {
-                                return answ.type == "essay" ? (
-                                    <div class={`answer-card ${answ.section?.is_quiz ? (answ.is_correct ? "answer-card--correct" : "answer-card--incorrect") : "answer-card--neutral"}`}>
-                                        <div class="answer-card-header">
-                                            <div class="answer-card-question">
-                                                <span class="answer-card-number">{answ.section?.order}</span>
-                                                {answ.section?.title}
+                <div className="mb-6">
+                    <h3 className="text-lg font-bold mb-4">Your Answers</h3>
+                    <div className="answer-list stagger-children">
+                        {result.answers?.map((answ, i) => {
+                            const isQuiz = answ.section?.is_quiz;
+                            const isCorrect = answ.is_correct;
+                            
+                            return (
+                                <div key={i} className={`answer-card ${isQuiz ? (isCorrect ? "answer-card--correct" : "answer-card--incorrect") : "answer-card--neutral"}`}>
+                                    <div className="answer-card-header">
+                                        <div className="answer-card-question">
+                                            <span className="answer-card-number">{i + 1}</span>
+                                            <div className="flex flex-col gap-1">
+                                                <span>{answ.section?.title}</span>
+                                                {answ.section?.description && (
+                                                    <span className="text-xs text-muted font-normal">{answ.section.description}</span>
+                                                )}
                                             </div>
-                                            <div class={`badge ${answ.section?.is_quiz ? (answ.is_correct ? "badge-success" : "badge-error") : "badge-neutral"}`}>{answ.section?.is_quiz ? (answ.is_correct ? "Correct" : "Incorrect") : "Survey"}</div>
                                         </div>
-                                        <div class="answer-card-body">
-                                            <div class="answer-user-text mb-3">
-                                                {answ.answer_text}
-                                            </div>
-                                            {
-                                                answ.section?.is_quiz && answ.section?.answer_key != null ? (
-                                                    <div class="answer-key-field">
-                                                        {
-                                                            answ.section.answer_key != null && (
-                                                                <span class="answer-key-label">
-                                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
-                                                                    Accepted Keywords:
-                                                                </span>
-                                                            )
-                                                        }
-                                                        <span class="answer-key-value">{answ.section.answer_key}</span>
-                                                    </div>
-                                                ) : ""
-                                            }
+                                        <div className={`badge ${isQuiz ? (isCorrect ? "badge-success" : "badge-error") : "badge-neutral"}`}>
+                                            {isQuiz ? (isCorrect ? "Correct" : "Incorrect") : "Survey"}
                                         </div>
                                     </div>
-                                ) : (
-                                    <div class={`answer-card ${answ.section?.is_quiz ? (answ.is_correct ? "answer-card--correct" : "answer-card--incorrect") : "answer-card--neutral"}`}>
-                                        <div class="answer-card-header">
-                                            <div class="answer-card-question">
-                                                <span class="answer-card-number">{answ.section?.order}</span>
-                                                {answ.section?.title}
+                                    
+                                    <div className="answer-card-body">
+                                        {answ.section?.image_url && (
+                                            <div className="question-image-container mb-4">
+                                                <img src={answ.section.image_url} alt="Question" className="question-image" />
                                             </div>
-                                            <div class={`badge ${answ.section?.is_quiz ? (answ.is_correct ? "badge-success" : "badge-error") : "badge-neutral"}`}>{answ.section?.is_quiz ? (answ.is_correct ? "Correct" : "Incorrect") : "Survey"}</div>
-                                        </div>
-                                        <div class="answer-card-body">
-                                            {
-                                                answ?.section?.options?.map((opt, i) => {
-                                                    const isSelected = answ.option?.id == opt.id
-                                                    const isCorrect = opt.is_correct == true
-                                                    const isWrong = isSelected && !isCorrect
+                                        )}
+
+                                        {/* Display answer based on type */}
+                                        {["essay", "date", "rating"].includes(answ.section?.type) && (
+                                            <div className="answer-user-text">
+                                                {answ.section?.type === "rating" ? (
+                                                    <div className="flex gap-1 text-warning">
+                                                        {[...Array(5)].map((_, idx) => (
+                                                            <svg key={idx} width="20" height="20" fill={idx < parseInt(answ.answer_text) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+                                                            </svg>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    answ.answer_text || <span className="text-muted italic">No answer provided</span>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {answ.section?.type === "file" && (
+                                            <div className="answer-user-text">
+                                                {answ.file_url ? (
+                                                    <a href={answ.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-primary font-semibold">
+                                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+                                                        View Uploaded File
+                                                    </a>
+                                                ) : <span className="text-muted italic">No file uploaded</span>}
+                                            </div>
+                                        )}
+
+                                        {["option", "checkbox", "dropdown"].includes(answ.section?.type) && (
+                                            <div className="option-list">
+                                                {answ.section?.options?.map((opt) => {
+                                                    const isSelected = answ.options_selected?.some(o => o.id === opt.id);
+                                                    const isCorrectOpt = opt.is_correct;
+                                                    
+                                                    let statusClass = "";
+                                                    if (isSelected && isCorrectOpt) statusClass = "result-option--correct";
+                                                    else if (isSelected && !isCorrectOpt) statusClass = "result-option--selected result-option--wrong";
+                                                    else if (!isSelected && isCorrectOpt && isQuiz) statusClass = "result-option--correct opacity-60";
+
                                                     return (
-                                                        <div class={`result-option 
-                                                        ${isSelected ? "result-option--selected" : ""} 
-                                                        ${isCorrect ? "result-option--correct" : ""} 
-                                                        ${isWrong ? "result-option--wrong" : ""}
-                                                        `}>
-                                                            <div class="result-option-marker">
-                                                                {isSelected && isCorrect ? "✓" : ""}
-                                                                {isSelected && !isCorrect ? "✕" : ""}
-                                                                {!isSelected && isCorrect ? "✓" : ""}
+                                                        <div key={opt.id} className={`result-option ${statusClass} flex-col items-start gap-2`}>
+                                                            <div className="flex items-center gap-3 w-full">
+                                                                <div className="result-option-marker">
+                                                                    {isCorrectOpt ? "✓" : (isSelected ? "✕" : "")}
+                                                                </div>
+                                                                <span className="radio-text">{opt.option_text}</span>
+                                                                {isSelected && <span className="badge badge-primary btn-sm ml-auto">Your Choice</span>}
                                                             </div>
-                                                            {opt.option_text}
+                                                            {opt.image_url && (
+                                                                <div className="option-image-container ml-8">
+                                                                    <img src={opt.image_url} alt="Option" className="option-image" />
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )
-                                                })
-                                            }
-                                        </div>
+                                                })}
+                                            </div>
+                                        )}
+                                        
+                                        {isQuiz && !isCorrect && answ.section?.type === "essay" && answ.section?.answer_key && (
+                                            <div className="answer-key-field mt-3">
+                                                <span className="answer-key-label">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+                                                    Correct Keywords:
+                                                </span>
+                                                <span className="answer-key-value">{answ.section.answer_key}</span>
+                                            </div>
+                                        )}
                                     </div>
-                                )
-                            })
-                        }
+                                </div>
+                            )
+                        })}
                     </div>
-
                 </div>
 
-
+                <div className="text-center py-8">
+                    <p className="text-muted text-sm">Thank you for participating!</p>
+                </div>
             </main>
         </>
     )

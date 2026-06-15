@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Storage;
 
 class FormSectionController extends Controller
 {
@@ -84,9 +85,10 @@ class FormSectionController extends Controller
 
         $val = Validator::make($request->all(), [
             "title" => "required",
-            "type" => "required|in:essay,option",
+            "type" => "required|string",
             "is_quiz" => "required|boolean",
-            "answer_key" => "nullable"
+            "answer_key" => "nullable",
+            "description" => "nullable"
         ]);
 
         if ($val->fails()) {
@@ -100,7 +102,8 @@ class FormSectionController extends Controller
         $data["order"] = $lastOrder ? $lastOrder->order + 1 : 0;
         $section = FormSection::create($data);
 
-        if ($request->type == "option") {
+        $optionTypes = ["option", "checkbox", "dropdown"];
+        if (in_array($request->type, $optionTypes)) {
             for ($i = 0; $i < 4; $i++) {
                 SectionOption::create([
                     "section_id" => $section->id,
@@ -114,6 +117,39 @@ class FormSectionController extends Controller
             "message" => "Section created succesfully",
             "data" => $section
         ], 201);
+    }
+
+    public function uploadImage(Request $request, $id)
+    {
+        $section = FormSection::with("form")->find($id);
+
+        if (!$section) {
+            return $this->notFound();
+        }
+
+        if ($section->form->user_id != Auth::guard("sanctum")->user()->id) {
+            return $this->forbidden();
+        }
+
+        $val = Validator::make($request->all(), [
+            "image" => "required|image|mimes:jpeg,png,jpg,gif,svg|max:2048",
+        ]);
+
+        if ($val->fails()) {
+            return $this->validateError($val);
+        }
+
+        if ($section->image_path) {
+            Storage::disk('public')->delete($section->image_path);
+        }
+
+        $path = $request->file('image')->store('sections', 'public');
+        $section->update(['image_path' => $path]);
+
+        return response()->json([
+            "message" => "Image uploaded succesfully",
+            "image_url" => asset('storage/' . $path)
+        ]);
     }
 
     /**
@@ -147,17 +183,21 @@ class FormSectionController extends Controller
         $cloneSect = FormSection::create([
             "form_id"=>$section->form->id,
             "title"=>$section->title,
+            "description"=>$section->description,
+            "image_path"=>$section->image_path,
             "type"=>$section->type,
             "order"=>$section->order,
             "answer_key"=>$section->answer_key,
             "is_quiz"=>$section->is_quiz
         ]);
 
-        if($section->type == "option"){
+        $optionTypes = ["option", "checkbox", "dropdown"];
+        if(in_array($section->type, $optionTypes)){
             foreach($section->options as $opt){
                 SectionOption::create([
                     "section_id"=>$cloneSect->id,
                     "option_text"=>$opt->option_text,
+                    "image_path"=>$opt->image_path,
                     "is_correct"=>$opt->is_correct,
                 ]);
             }
@@ -191,7 +231,8 @@ class FormSectionController extends Controller
 
         $val = Validator::make($request->all(), [
             "title" => "string",
-            "type" => "in:essay,option",
+            "type" => "string",
+            "description" => "nullable",
             "is_quiz" => "boolean",
             "answer_key" => "nullable"
         ]);
@@ -201,12 +242,17 @@ class FormSectionController extends Controller
         }
 
         $data = $request->all();
-        DB::transaction(function () use ($section, $request, $data) {
-            if ($section->type == "option" && $request->type == "essay") {
+        $oldType = $section->type;
+        $newType = $request->type ?? $oldType;
+
+        DB::transaction(function () use ($section, $oldType, $newType, $data) {
+            $optionTypes = ["option", "checkbox", "dropdown"];
+            
+            if (in_array($oldType, $optionTypes) && !in_array($newType, $optionTypes)) {
                 SectionOption::where("section_id", $section->id)->delete();
             }
 
-            if ($section->type == "essay" && $request->type == "option") {
+            if (!in_array($oldType, $optionTypes) && in_array($newType, $optionTypes)) {
                 $data["answer_key"] = null;
 
                 for ($i = 0; $i < 4; $i++) {
@@ -246,6 +292,10 @@ class FormSectionController extends Controller
 
         if (!$section) {
             return $this->notFound();
+        }
+
+        if ($section->image_path) {
+            Storage::disk('public')->delete($section->image_path);
         }
 
         $section->delete();

@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
 
 class FormResponseController extends Controller
 {
@@ -40,11 +41,11 @@ class FormResponseController extends Controller
             return $this->notFound();
         }
 
+        // We use request()->all() because files might be present
         $val = Validator::make($request->all(), [
             "answers" => "required|array",
             "answers.*.section_id" => "required|exists:form_sections,id",
-            "answers.*.section_option_id" => "exists:section_options,id",
-            "answers.*.answer_text" => "string",
+            // Other fields are validated dynamically based on type
         ]);
 
         if ($val->fails()) {
@@ -53,111 +54,108 @@ class FormResponseController extends Controller
 
         $formResponse = FormResponse::create([
             "form_id" => $form->id,
-            "user_id" => Auth::guard("sanctum")->user()->id,
+            "user_id" => Auth::guard("sanctum")->id(),
             "total_score" => 0,
             "completed_at" => now(),
         ]);
 
-        $totalQuestion = 0;
+        $totalQuizSections = $form->sections->where('is_quiz', true)->count();
+        $scorePerQuestion = $totalQuizSections > 0 ? round(100 / $totalQuizSections, 2) : 0;
+        $totalEarnedScore = 0;
 
-        foreach ($request->answers as $answer) {
-            $section = FormSection::find($answer["section_id"]);
+        foreach ($request->answers as $index => $answer) {
+            $section = $form->sections->find($answer["section_id"]);
+            if (!$section) continue;
 
-            if (!$section) {
-                return $this->notFound();
-            }
+            $isCorrect = false;
+            $earnedScore = 0;
 
-            if ($section->is_quiz == true) {
-                $totalQuestion++;
-            }
-        }
-
-        if ($totalQuestion > 0) {
-            $scorePerQuestion = round(100 / $totalQuestion, 2);
-        } else {
-            $scorePerQuestion = 0;
-        }
-
-        $correctAnswers = 0;
-        foreach ($request->answers as $answer) {
-            $section = FormSection::with("options")->find($answer["section_id"]);
-
-            if (!$section) {
-                return $this->notFound();
-            }
-
-            if ($section->is_quiz == true) {
-                if ($section->type == "option") {
-                    $optionSelected = $section->options->find($answer["section_option_id"]);
-                    if ($optionSelected->is_correct == true) {
-                        $correctAnswers++;
-                    }
-
-                    ResponseAnswer::create([
-                        "response_id" => $formResponse->id,
-                        "section_id" => $section->id,
-                        "section_option_id" => $optionSelected->id,
-                        "answer_text" => null,
-                        "is_correct" => $optionSelected->is_correct,
-                        "score" => $optionSelected->is_correct ? $scorePerQuestion : 0,
-                    ]);
+            if ($section->type == "essay" || $section->type == "date" || $section->type == "rating") {
+                $text = $answer["answer_text"] ?? null;
+                if ($section->is_quiz && $section->type == "essay") {
+                    $isCorrect = Str::contains(strtolower($text), strtolower($section->answer_key)) ?? false;
                 } else {
-                    $isCorrect = Str::contains(strtolower($answer["answer_text"]), strtolower($section->answer_key)) ?? false;
+                    $isCorrect = true; // Survey mode or non-gradable types
+                }
+                
+                ResponseAnswer::create([
+                    "response_id" => $formResponse->id,
+                    "section_id" => $section->id,
+                    "answer_text" => $text,
+                    "is_correct" => $isCorrect,
+                    "score" => ($section->is_quiz && $isCorrect) ? $scorePerQuestion : 0,
+                ]);
 
-                    if ($isCorrect) {
-                        $correctAnswers++;
-                    }
+                if ($section->is_quiz && $isCorrect) $totalEarnedScore += $scorePerQuestion;
 
+            } elseif ($section->type == "option" || $section->type == "dropdown") {
+                $optId = $answer["section_option_id"] ?? null;
+                $option = $section->options->find($optId);
+                $isCorrect = $option ? $option->is_correct : false;
+
+                ResponseAnswer::create([
+                    "response_id" => $formResponse->id,
+                    "section_id" => $section->id,
+                    "section_option_id" => $optId,
+                    "is_correct" => $isCorrect,
+                    "score" => ($section->is_quiz && $isCorrect) ? $scorePerQuestion : 0,
+                ]);
+
+                if ($section->is_quiz && $isCorrect) $totalEarnedScore += $scorePerQuestion;
+
+            } elseif ($section->type == "checkbox") {
+                $optIds = $answer["section_option_ids"] ?? [];
+                if (is_string($optIds)) $optIds = json_decode($optIds, true) ?? [];
+                
+                $correctOptionIds = $section->options->where('is_correct', true)->pluck('id')->toArray();
+                
+                // Check if selected options match correct options exactly for quiz
+                if ($section->is_quiz) {
+                    $isCorrect = count($optIds) === count($correctOptionIds) && !array_diff($optIds, $correctOptionIds);
+                } else {
+                    $isCorrect = true;
+                }
+
+                foreach ($optIds as $oid) {
                     ResponseAnswer::create([
                         "response_id" => $formResponse->id,
                         "section_id" => $section->id,
-                        "section_option_id" => null,
-                        "answer_text" => $answer["answer_text"] ?? null,
-                        "is_correct" => $isCorrect ? true : false,
-                        "score" => $isCorrect ? $scorePerQuestion : 0,
+                        "section_option_id" => $oid,
+                        "is_correct" => $isCorrect, // We mark each row as correct if the whole set was correct
+                        "score" => 0, // Individual score is 0, we'll add to total later
                     ]);
                 }
-            } else {
-                if ($section->type == "option") {
-                    $optionSelected = $section->options->find($answer["section_option_id"]);
 
-                    ResponseAnswer::create([
-                        "response_id" => $formResponse->id,
-                        "section_id" => $section->id,
-                        "section_option_id" => $optionSelected->id,
-                        "answer_text" => null,
-                        "is_correct" => $optionSelected->is_correct ?? true,
-                        "score" => 0,
-                    ]);
-                } else {
-                    ResponseAnswer::create([
-                        "response_id" => $formResponse->id,
-                        "section_id" => $section->id,
-                        "section_option_id" => null,
-                        "answer_text" => $answer["answer_text"] ?? null,
-                        "is_correct" => true,
-                        "score" => 0,
-                    ]);
+                if ($section->is_quiz && $isCorrect) {
+                    $totalEarnedScore += $scorePerQuestion;
+                    // Update the rows to reflect the score (optional, but good for reporting)
+                    ResponseAnswer::where('response_id', $formResponse->id)->where('section_id', $section->id)->update(['score' => $scorePerQuestion / max(1, count($optIds))]);
                 }
-            }
-        }
 
-        if ($totalQuestion > 0) {
-            $finalScore = round(($correctAnswers / $totalQuestion) * 100);
-        } else {
-            $finalScore = 0;
+            } elseif ($section->type == "file") {
+                $filePath = null;
+                if ($request->hasFile("answers.{$index}.answer_file")) {
+                    $filePath = $request->file("answers.{$index}.answer_file")->store('responses', 'public');
+                }
+
+                ResponseAnswer::create([
+                    "response_id" => $formResponse->id,
+                    "section_id" => $section->id,
+                    "answer_text" => $filePath,
+                    "is_correct" => true,
+                    "score" => 0,
+                ]);
+            }
         }
 
         $formResponse->update([
-            "total_score" => $finalScore
+            "total_score" => min(100, round($totalEarnedScore))
         ]);
 
-        $result = FormResponse::with("answers")->find($formResponse->id);
-
         return response()->json([
-            "message" => "question submitted sucesfully",
-            "total_score" => $finalScore,
-            "data" => $result
+            "message" => "Form submitted successfully",
+            "total_score" => $formResponse->total_score,
+            "data" => FormResponse::with("answers")->find($formResponse->id)
         ]);
     }
 
@@ -178,156 +176,103 @@ class FormResponseController extends Controller
             return $this->notFound();
         }
 
-        $isQuiz = $result->answers->contains(function ($answ) {
-            return $answ->section && $answ->section->is_quiz == 1;
-        });
-
-        $totalCorrect = 0;
-        $totalIncorrect = 0;
-
-        if ($isQuiz) {
-            $totalCorrect = $result->answers->filter(function ($answ) {
-                return $answ->section && $answ->section->is_quiz == 1 && $answ->is_correct == 1;
-            })->count();
-
-            $totalIncorrect = $result->answers->filter(function ($answ) {
-                return $answ->section && $answ->section->is_quiz == 1 && $answ->is_correct == 0;
-            })->count();
-        }
-
         return response()->json([
             "form" => $result->form,
             "user" => $result->user,
-            "form_type" => $isQuiz ? "quiz" : "survey",
             "total_score" => $result->total_score,
             "completed_at" => $result->completed_at,
-            "total_correct" => $totalCorrect,
-            "total_incorrect" => $totalIncorrect,
-            "answers" => $result->answers->map(function ($answer) {
+            "answers" => $result->answers->groupBy('section_id')->map(function ($sectionAnswers) {
+                $first = $sectionAnswers->first();
+                $section = $first->section;
+                
                 return [
-                    "id" => $answer->id,
-                    "is_correct" => $answer->is_correct ? true : false,
-                    "score" => $answer->score,
-                    "type" => $answer->section->type,
-                    "option" => $answer->option,
-                    ...($answer->section->type == "essay" ? [
-                        "answer_text" => $answer->answer_text
-                    ] : []),
                     "section" => [
-                        "id" => $answer->section->id,
-                        "title" => $answer->section->title,
-                        "type" => $answer->section->type,
-                        "order" => $answer->section->order,
-                        "is_quiz" => $answer->section->is_quiz ? true : false,
-                        ...($answer->section->type == "option" ? [
-                            "options" => $answer->section->options->map(function ($opt) {
-                                return [
-                                    "id" => $opt->id,
-                                    "option_text" => $opt->option_text,
-                                    "is_correct" => $opt->is_correct ? true : false,
-                                ];
-                            })
-                        ] : []),
-                        ...($answer->section->type == "essay" && $answer->section->is_quiz == 1 ? [
-                            "answer_key" => $answer->section->answer_key
-                        ] : [])
+                        "id" => $section->id,
+                        "title" => $section->title,
+                        "type" => $section->type,
+                        "description" => $section->description,
+                        "image_url" => $section->image_url,
+                        "is_quiz" => (bool) $section->is_quiz,
+                        "options" => $section->options->map(fn($o) => [
+                            "id" => $o->id,
+                            "option_text" => $o->option_text,
+                            "image_url" => $o->image_url,
+                            "is_correct" => (bool) $o->is_correct
+                        ])
                     ],
-
+                    "is_correct" => (bool) $first->is_correct,
+                    "score" => $sectionAnswers->sum('score'),
+                    "answer_text" => $first->answer_text,
+                    "options_selected" => $sectionAnswers->map(fn($a) => $a->option)->filter(),
+                    "file_url" => ($section->type == 'file' && $first->answer_text) ? asset('storage/' . $first->answer_text) : null
                 ];
-            })
+            })->values()
         ]);
     }
 
     public function summary($slug)
     {
-        $form = Form::with("responses.user", "sections", "responses.answers.section.options")->where("slug", $slug)->first();
+        $form = Form::with(["responses.user", "sections.options", "responses.answers.section"])->where("slug", $slug)->first();
 
         if (!$form) {
             return $this->notFound();
         }
 
-        if ($form->user_id != Auth::guard("sanctum")->user()->id) {
+        if ($form->user_id != Auth::guard("sanctum")->id()) {
             return $this->forbidden();
         }
 
-        $isQuiz = $form->sections->contains(function ($sect) {
-            return $sect->is_quiz == true;
-        });
-
-        $type = $isQuiz ? "quiz" : "survey";
         $totalRespondents = $form->responses()->count();
         $averageScore = round($form->responses()->average("total_score"), 1);
-        $highestScore = $form->responses()->max("total_score");
-        $lowestScore = $form->responses()->min("total_score");
-
-
-        $chartResponses = $form->responses
-            ->flatMap(fn($res) => $res->answers)
-            ->filter(
-                fn($ans) =>
-                // $ans->section?->is_quiz == true &&
-                    $ans->section->type == "option"
-            )->groupBy("section_id")
-            ->map(function ($answers, $sectionId) {
-                $section = $answers->first()->section;
-
-                $answerCounts = $answers->countBy("section_option_id");
+        $highestScore = $form->responses()->max("total_score") ?? 0;
+        $lowestScore = $form->responses()->min("total_score") ?? 0;
+        
+        $chartResponses = $form->sections->filter(fn($s) => in_array($s->type, ['option', 'checkbox', 'dropdown', 'rating']))
+            ->map(function ($section) use ($form) {
+                $answers = ResponseAnswer::where('section_id', $section->id)->get();
+                $totalAnswers = $answers->groupBy('response_id')->count(); // Count unique responses for this question
+                
+                if (in_array($section->type, ['option', 'checkbox', 'dropdown'])) {
+                    $counts = $answers->whereNotNull('section_option_id')->countBy('section_option_id');
+                    $options = $section->options->map(fn($o) => [
+                        "id" => $o->id,
+                        "option_text" => $o->option_text,
+                        "count" => $counts[$o->id] ?? 0
+                    ]);
+                } else { // rating
+                    $counts = $answers->countBy('answer_text');
+                    $options = collect(range(1, 5))->map(fn($r) => [
+                        "id" => $r,
+                        "option_text" => "$r Stars",
+                        "count" => $counts[$r] ?? 0
+                    ]);
+                }
 
                 return [
-                    "section_id"    => $sectionId,
+                    "section_id" => $section->id,
                     "section_title" => $section->title,
-                    "total_answers" => $answers->count(),
-                    "options"       => $section->options->map(function ($opt) use ($answerCounts) {
-                        return [
-                            "id"          => $opt->id,
-                            "option_text" => $opt->option_text,
-                            "is_correct"  => (bool) $opt->is_correct,
-                            "count"       => $answerCounts[$opt->id] ?? 0, // berapa kali dipilih
-                        ];
-                    }),
+                    "type" => $section->type,
+                    "total_answers" => $totalAnswers,
+                    "options" => $options
                 ];
             })->values();
 
         return response()->json([
-            "form" => [
-                "id" => $form->id,
-                "title" => $form->title,
-                "slug" => $form->slug,
-                "description" => $form->description,
-                "type" => $type
-            ],
+            "form" => $form,
             "summary" => [
                 "total_respondents" => $totalRespondents,
-                "average_scores" => $averageScore,
+                "average_score" => $averageScore,
                 "highest_score" => $highestScore,
                 "lowest_score" => $lowestScore,
             ],
             "charts" => $chartResponses,
-            "responses" => $form->responses->map(function ($res) {
-                return [
-                    "id" => $res->id,
-                    "user" => $res->user,
-                    "total_score" => $res->total_score,
-                    "completed_at" => $res->completed_at,
-                ];
-            })
+            "responses" => $form->responses->map(fn($r) => [
+                "id" => $r->id,
+                "user" => $r->user,
+                "total_score" => $r->total_score,
+                "completed_at" => $r->completed_at,
+            ])
         ]);
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(FormResponse $formResponse)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, FormResponse $formResponse)
-    {
-        //
     }
 
     /**
@@ -341,14 +286,23 @@ class FormResponseController extends Controller
             return $this->notFound();
         }
 
-        if ($response->form->user_id != Auth::guard("sanctum")->user()->id) {
+        if ($response->form->user_id != Auth::guard("sanctum")->id()) {
             return $this->forbidden();
+        }
+
+        // Delete files associated with this response
+        $fileAnswers = ResponseAnswer::where('response_id', $id)
+            ->whereHas('section', fn($q) => $q->where('type', 'file'))
+            ->get();
+            
+        foreach ($fileAnswers as $fa) {
+            if ($fa->answer_text) Storage::disk('public')->delete($fa->answer_text);
         }
 
         $response->delete();
 
         return response()->json([
-            "message" => "Response deleted succesfully"
+            "message" => "Response deleted successfully"
         ]);
     }
 }
