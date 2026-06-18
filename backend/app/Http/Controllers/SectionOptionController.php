@@ -131,6 +131,7 @@ class SectionOptionController extends Controller
             "options.*.id" => "required|exists:section_options,id",
             "options.*.option_text" => "nullable",
             "options.*.is_correct" => "required|boolean",
+            "options.*.logic_target_section_id" => "nullable|exists:form_sections,id",
         ]);
 
         if ($val->fails()) {
@@ -160,6 +161,7 @@ class SectionOptionController extends Controller
             $option->update([
                 "option_text" => $opt["option_text"],
                 "is_correct" => $opt["is_correct"],
+                "logic_target_section_id" => $opt["logic_target_section_id"] ?? null,
             ]);
         }
 
@@ -177,9 +179,34 @@ class SectionOptionController extends Controller
                         "option_text" => $opt->option_text,
                         "image_url" => $opt->image_url,
                         "is_correct" => $opt->is_correct,
+                        "logic_target_section_id" => $opt->logic_target_section_id,
                     ];
                 })
             ]
+        ]);
+    }
+
+    public function deleteImage($id)
+    {
+        $option = SectionOption::find($id);
+
+        if (!$option) {
+            return $this->notFound();
+        }
+
+        $section = FormSection::with("form")->find($option->section_id);
+        if ($section->form->user_id != Auth::guard("sanctum")->user()->id) {
+            return $this->forbidden();
+        }
+
+        if ($option->image_path) {
+            Storage::disk('public')->delete($option->image_path);
+        }
+
+        $option->update(['image_path' => null]);
+
+        return response()->json([
+            "message" => "Option image deleted succesfully"
         ]);
     }
 

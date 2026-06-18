@@ -1,33 +1,89 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useMemo } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import api from "../api/api"
 
 export default function FormFill() {
     const params = useParams()
     const [form, setForm] = useState({})
-    const totalQuestion = useRef(0)
-    const [totalAnswered, setTotalAnswered] = useState(0)
     const [answers, setAnswers] = useState([])
-    const [sections, setSections] = useState([])
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [isSubmitted, setIsSubmitted] = useState(false)
+    const [showConfirm, setShowConfirm] = useState(false)
+    const [submitRes, setSubmitRes] = useState({})
     const navigate = useNavigate()
+
+    // Pagination State
+    const [currentPageIndex, setCurrentPageIndex] = useState(0)
 
     async function fetchForm() {
         api.get(`/forms/${params.slug}`).then(res => {
             setForm(res.data)
-            totalQuestion.current = res.data.sections?.length
             setAnswers(res.data.sections?.map((sect) => {
                 const base = { section_id: sect.id, type: sect.type }
                 if (sect.type === "checkbox") return { ...base, section_option_ids: [] }
                 if (sect.type === "file") return { ...base, answer_file: null }
                 return { ...base, answer_text: "", section_option_id: null }
             }))
-            setSections(res.data.sections)
         })
     }
 
+    // Split sections into pages
+    const pages = useMemo(() => {
+        if (!form.sections) return []
+        const p = []
+        let currentPage = []
+        
+        form.sections.forEach((sect, idx) => {
+            if (sect.is_page_break && idx !== 0) {
+                p.push(currentPage)
+                currentPage = []
+            }
+            currentPage.push(sect)
+        })
+        if (currentPage.length > 0) p.push(currentPage)
+        return p
+    }, [form.sections])
+
+    const currentPage = pages[currentPageIndex] || []
+    const isFirstPage = currentPageIndex === 0
+    const isLastPage = currentPageIndex === pages.length - 1
+
+    function handleNext() {
+        // Find logic in current page sections
+        let targetSectionId = null
+        
+        currentPage.forEach(sect => {
+            if (sect.type === "option" || sect.type === "dropdown") {
+                const answ = answers.find(a => a.section_id === sect.id)
+                if (answ && answ.section_option_id) {
+                    const opt = sect.options.find(o => o.id === parseInt(answ.section_option_id))
+                    if (opt && opt.logic_target_section_id) {
+                        targetSectionId = opt.logic_target_section_id
+                    }
+                }
+            }
+        })
+
+        if (targetSectionId) {
+            const targetPageIndex = pages.findIndex(p => p.some(s => s.id === parseInt(targetSectionId)))
+            if (targetPageIndex !== -1) {
+                setCurrentPageIndex(targetPageIndex)
+                window.scrollTo(0, 0)
+                return
+            }
+        }
+
+        setCurrentPageIndex(prev => Math.min(pages.length - 1, prev + 1))
+        window.scrollTo(0, 0)
+    }
+
+    function handleBack() {
+        setCurrentPageIndex(prev => Math.max(0, prev - 1))
+        window.scrollTo(0, 0)
+    }
+
     async function handleSubmit(e) {
-        e.preventDefault()
+        if (e) e.preventDefault()
         setIsSubmitting(true)
 
         const formData = new FormData()
@@ -56,31 +112,26 @@ export default function FormFill() {
             alert(error.response?.data?.message || "Error submitting form")
         }).finally(() => {
             setIsSubmitting(false)
+            setShowConfirm(false)
         })
     }
 
-    const updateAnswer = (index, data) => {
-        const newAnswers = [...answers]
-        newAnswers[index] = { ...newAnswers[index], ...data }
-        setAnswers(newAnswers)
+    const updateAnswer = (sectId, data) => {
+        setAnswers(prev => prev.map(a => a.section_id === sectId ? { ...a, ...data } : a))
     }
 
-    const toggleCheckbox = (index, optionId) => {
-        const currentIds = answers[index].section_option_ids || []
-        const newIds = currentIds.includes(optionId)
-            ? currentIds.filter(id => id !== optionId)
-            : [...currentIds, optionId]
-        updateAnswer(index, { section_option_ids: newIds })
+    const toggleCheckbox = (sectId, optionId) => {
+        setAnswers(prev => prev.map(a => {
+            if (a.section_id === sectId) {
+                const currentIds = a.section_option_ids || []
+                const newIds = currentIds.includes(optionId)
+                    ? currentIds.filter(id => id !== optionId)
+                    : [...currentIds, optionId]
+                return { ...a, section_option_ids: newIds }
+            }
+            return a
+        }))
     }
-
-    useEffect(() => {
-        const answered = answers.filter(a => {
-            if (a.type === "checkbox") return a.section_option_ids?.length > 0
-            if (a.type === "file") return a.answer_file !== null
-            return a.answer_text !== "" || a.section_option_id !== null
-        }).length
-        setTotalAnswered(answered)
-    }, [answers])
 
     useEffect(() => {
         document.title = "FormFill | FormKraft"
@@ -96,25 +147,40 @@ export default function FormFill() {
                         <h1>{form.title}</h1>
                         <p>{form.description}</p>
 
-                        <div className="fill-progress">
-                            <div className="fill-progress-bar">
-                                <div className="fill-progress-fill" style={{ "width": `${(totalAnswered / (totalQuestion.current || 1)) * 100}%` }}></div>
+                        {pages.length > 1 && (
+                            <div className="fill-progress">
+                                <div 
+                                    className="fill-progress-bar" 
+                                    role="progressbar" 
+                                    aria-valuenow={((currentPageIndex + 1) / pages.length) * 100} 
+                                    aria-valuemin="0" 
+                                    aria-valuemax="100"
+                                    aria-label={`Progress: Page ${currentPageIndex + 1} of ${pages.length}`}
+                                >
+                                    <div className="fill-progress-fill" style={{ width: `${((currentPageIndex + 1) / pages.length) * 100}%` }}></div>
+                                </div>
+                                <span className="fill-progress-text" aria-hidden="true">Page {currentPageIndex + 1} of {pages.length}</span>
                             </div>
-                            <span className="fill-progress-text">{totalAnswered} of {totalQuestion.current} answered</span>
-                        </div>
+                        )}
                     </div>
 
-                    <form onSubmit={e => handleSubmit(e)} className="stagger-children">
+                    <form 
+                        onSubmit={e => { e.preventDefault(); if (isLastPage) setShowConfirm(true); }} 
+                        onKeyDown={e => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault(); }}
+                        className="stagger-children"
+                    >
                         {
-                            answers.map((answ, i) => {
-                                const sect = sections.find(s => s.id === answ.section_id)
-                                if (!sect) return null
+                            currentPage.map((sect) => {
+                                const answ = answers.find(a => a.section_id === sect.id)
+                                if (!answ) return null
 
                                 return (
                                     <div key={sect.id} className="fill-section" id={`section-${sect.order}`}>
                                         <div className="fill-section-number">{sect.order}</div>
                                         <div className="fill-section-title">
-                                            {sect.title} <span className="fill-section-required">*</span>
+                                            {sect.title}
+                                            {sect.is_required && <span className="fill-section-required" aria-hidden="true">*</span>}
+                                            {sect.is_required && <span className="sr-only">(Required)</span>}
                                         </div>
 
                                         {sect.description && (
@@ -130,21 +196,21 @@ export default function FormFill() {
                                         {/* Inputs based on type */}
                                         {sect.type === "essay" && (
                                             <textarea
-                                                onChange={e => updateAnswer(i, { answer_text: e.target.value })}
-                                                className="form-textarea"
+                                                onChange={e => updateAnswer(sect.id, { answer_text: e.target.value })}
+                                                className="form-textarea focus-ring"
                                                 placeholder="Type your answer here..."
-                                                required
                                                 value={answ.answer_text}
+                                                aria-required={sect.is_required}
                                             ></textarea>
                                         )}
 
                                         {(sect.type === "option" || sect.type === "dropdown") && (
                                             sect.type === "dropdown" ? (
                                                 <select
-                                                    className="form-select"
-                                                    onChange={e => updateAnswer(i, { section_option_id: parseInt(e.target.value) })}
-                                                    required
+                                                    className="form-select focus-ring"
+                                                    onChange={e => updateAnswer(sect.id, { section_option_id: parseInt(e.target.value) })}
                                                     value={answ.section_option_id || ""}
+                                                    aria-required={sect.is_required}
                                                 >
                                                     <option value="" disabled>Select an option</option>
                                                     {sect.options?.map(opt => (
@@ -162,8 +228,7 @@ export default function FormFill() {
                                                                 value={opt.id}
                                                                 className="radio-hidden"
                                                                 checked={answ.section_option_id === opt.id}
-                                                                onChange={() => updateAnswer(i, { section_option_id: opt.id })}
-                                                                required
+                                                                onChange={() => updateAnswer(sect.id, { section_option_id: opt.id })}
                                                             />
                                                             <label htmlFor={`opt-${opt.id}`} className="radio-item flex-col items-start gap-2">
                                                                 <div className="flex items-center gap-3 w-full">
@@ -193,11 +258,13 @@ export default function FormFill() {
                                                             id={`opt-${opt.id}`}
                                                             className="checkbox-hidden"
                                                             checked={answ.section_option_ids?.includes(opt.id)}
-                                                            onChange={() => toggleCheckbox(i, opt.id)}
+                                                            onChange={() => toggleCheckbox(sect.id, opt.id)}
                                                         />
                                                         <label htmlFor={`opt-${opt.id}`} className="checkbox-item flex-col items-start gap-2">
                                                             <div className="flex items-center gap-3 w-full">
-                                                                <div className="checkbox-box"></div>
+                                                                <div className={`checkbox-box ${answ.section_option_ids?.includes(opt.id) ? "is-active" : ""}`}>
+                                                                    {answ.section_option_ids?.includes(opt.id) && "✓"}
+                                                                </div>
                                                                 <span className="radio-text">{opt.option_text}</span>
                                                             </div>
                                                             {opt.image_url && (
@@ -217,10 +284,9 @@ export default function FormFill() {
                                                     <div
                                                         key={star}
                                                         className={`rating-item ${parseInt(answ.answer_text) >= star ? "is-active" : ""}`}
-                                                        onClick={() => updateAnswer(i, { answer_text: star.toString() })}
+                                                        onClick={() => updateAnswer(sect.id, { answer_text: star.toString() })}
                                                     >
                                                         <svg className="rating-star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" /></svg>
-                                                        <span className="rating-label">{star}</span>
                                                     </div>
                                                 ))}
                                             </div>
@@ -229,10 +295,10 @@ export default function FormFill() {
                                         {sect.type === "date" && (
                                             <input
                                                 type="date"
-                                                className="form-input"
-                                                onChange={e => updateAnswer(i, { answer_text: e.target.value })}
-                                                required
+                                                className="form-input focus-ring"
+                                                onChange={e => updateAnswer(sect.id, { answer_text: e.target.value })}
                                                 value={answ.answer_text}
+                                                aria-required={sect.is_required}
                                             />
                                         )}
 
@@ -242,8 +308,7 @@ export default function FormFill() {
                                                     type="file"
                                                     id={`file-${sect.id}`}
                                                     className="hide"
-                                                    onChange={e => updateAnswer(i, { answer_file: e.target.files[0] })}
-                                                    required={!answ.answer_file}
+                                                    onChange={e => updateAnswer(sect.id, { answer_file: e.target.files[0] })}
                                                 />
                                                 <label htmlFor={`file-${sect.id}`} className="file-upload-container">
                                                     <svg className="file-upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
@@ -261,14 +326,21 @@ export default function FormFill() {
                             })
                         }
 
-                        <div className="fill-submit">
-                            <button
-                                type="submit"
-                                className="btn btn-primary btn-lg px-8 shadow-md"
-                                disabled={isSubmitting}
-                            >
-                                {isSubmitting ? "Submitting..." : "Submit Form"}
-                            </button>
+                        <div className="fill-submit flex justify-between gap-4 mt-8">
+                            {!isFirstPage && (
+                                <button type="button" onClick={handleBack} className="btn btn-secondary btn-lg flex-1">Back</button>
+                            )}
+                            {!isLastPage ? (
+                                <button type="button" onClick={handleNext} className="btn btn-primary btn-lg flex-1">Next</button>
+                            ) : (
+                                <button 
+                                    type="submit" 
+                                    className="btn btn-primary btn-lg flex-1"
+                                    disabled={isSubmitting}
+                                >
+                                    {isSubmitting ? "Submitting..." : "Submit"}
+                                </button>
+                            )}
                         </div>
 
                     </form>
@@ -279,6 +351,24 @@ export default function FormFill() {
 
                 </div >
             </div >
+
+            <div className={`modal-overlay ${showConfirm ? "" : "hide"}`}>
+                <div className="modal">
+                    <div className="modal-header">
+                        <h3>Submit Response?</h3>
+                        <button type="button" onClick={() => setShowConfirm(false)} className="modal-close">&times;</button>
+                    </div>
+                    <div className="modal-body">
+                        <p>Are you sure you want to submit your response? You won't be able to change it after this.</p>
+                    </div>
+                    <div className="modal-footer">
+                        <button onClick={() => setShowConfirm(false)} className="btn btn-secondary" disabled={isSubmitting}>Cancel</button>
+                        <button onClick={() => handleSubmit()} className="btn btn-primary" disabled={isSubmitting}>
+                            {isSubmitting ? "Submitting..." : "Yes, Submit"}
+                        </button>
+                    </div>
+                </div>
+            </div>
         </>
     )
 }

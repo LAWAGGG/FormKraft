@@ -153,15 +153,15 @@ export default function FormResponses() {
             <div class={`modal-overlay ${isDelete ? "" : "hide"}`} id="deleteFormModal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3>Delete Form?</h3>
-                        <button onClick={() => { setIsDelete(false); setSlug("") }} class="modal-close">&times;</button>
+                        <h3>Delete Response?</h3>
+                        <button onClick={() => { setIsDelete(false); setResId("") }} class="modal-close">&times;</button>
                     </div>
                     <div class="modal-body">
                         <p>Are you sure you want to delete this response? This action cannot be undone.</p>
                     </div>
                     <div class="modal-footer">
-                        <button onClick={() => { setIsDelete(false); setSlug("") }} class="btn btn-secondary">Cancel</button>
-                        <button onClick={() => handleDelete()} class="btn btn-danger">Delete Form</button>
+                        <button onClick={() => { setIsDelete(false); setResId("") }} class="btn btn-secondary">Cancel</button>
+                        <button onClick={() => handleDelete()} class="btn btn-danger">Delete Response</button>
                     </div>
                 </div>
             </div>

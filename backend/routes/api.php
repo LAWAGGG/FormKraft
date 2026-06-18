@@ -29,6 +29,7 @@ Route::middleware("auth:sanctum")->group(function () {
     Route::post("/forms/{slug}/sections", [FormSectionController::class, "store"]);
     Route::put("/forms/{slug}/sections/{id}", [FormSectionController::class, "update"]);
     Route::post("/sections/{id}/image", [FormSectionController::class, "uploadImage"]);
+    Route::delete("/sections/{id}/image", [FormSectionController::class, "deleteImage"]);
     Route::put("/forms/{slug}/reorder", [FormSectionController::class, "reorder"]);
     Route::delete("/forms/{slug}/sections/{id}", [FormSectionController::class, "destroy"]);
     Route::get('/forms/{slug}', [FormController::class, "show"]);
@@ -38,6 +39,7 @@ Route::middleware("auth:sanctum")->group(function () {
     Route::post("/sections/{id}/options", [SectionOptionController::class, "store"]);
     Route::put("/sections/{id}/options", [SectionOptionController::class, "update"]);
     Route::post("/options/{id}/image", [SectionOptionController::class, "uploadImage"]);
+    Route::delete("/options/{id}/image", [SectionOptionController::class, "deleteImage"]);
     Route::delete("/sections/{id}/options/{optId}", [SectionOptionController::class, "destroy"]);
 
     //form response

@@ -98,6 +98,8 @@ class FormController extends Controller
             "title" => $form->title,
             "slug" => $form->slug,
             "description" => $form->description,
+            "thank_you_title" => $form->thank_you_title,
+            "thank_you_message" => $form->thank_you_message,
             "sections" => $form->sections->map(function ($sect) use ($form, $user) {
                 $optionTypes = ["option", "checkbox", "dropdown"];
                 return [
@@ -106,6 +108,7 @@ class FormController extends Controller
                     "type" => $sect->type,
                     "description" => $sect->description,
                     "image_url" => $sect->image_url,
+                    "is_page_break" => (bool) $sect->is_page_break,
                     ...($sect->type == "essay" && $sect->is_quiz && $form->user_id == $user  ? [
                         "answer_key"=>$sect->answer_key
                     ] : []),
@@ -117,6 +120,7 @@ class FormController extends Controller
                                 "id" => $opt->id,
                                 "option_text" => $opt->option_text,
                                 "image_url" => $opt->image_url,
+                                "logic_target_section_id" => $opt->logic_target_section_id,
                                 ...($form->user_id == $user ? [
                                     "is_correct" => $opt->is_correct ? true : false,
                                 ] : [])
@@ -153,7 +157,9 @@ class FormController extends Controller
 
         $val = Validator::make($request->all(), [
             "title" => "required",
-            "description" => "required"
+            "description" => "required",
+            "thank_you_title" => "nullable|string",
+            "thank_you_message" => "nullable|string"
         ]);
 
         if ($val->fails()) {

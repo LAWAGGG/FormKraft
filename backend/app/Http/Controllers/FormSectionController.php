@@ -87,6 +87,7 @@ class FormSectionController extends Controller
             "title" => "required",
             "type" => "required|string",
             "is_quiz" => "required|boolean",
+            "is_page_break" => "nullable|boolean",
             "answer_key" => "nullable",
             "description" => "nullable"
         ]);
@@ -100,6 +101,7 @@ class FormSectionController extends Controller
         $data = $request->all();
         $data["form_id"] = $form->id;
         $data["order"] = $lastOrder ? $lastOrder->order + 1 : 0;
+        $data["is_page_break"] = $request->is_page_break ?? false;
         $section = FormSection::create($data);
 
         $optionTypes = ["option", "checkbox", "dropdown"];
@@ -152,6 +154,29 @@ class FormSectionController extends Controller
         ]);
     }
 
+    public function deleteImage($id)
+    {
+        $section = FormSection::with("form")->find($id);
+
+        if (!$section) {
+            return $this->notFound();
+        }
+
+        if ($section->form->user_id != Auth::guard("sanctum")->user()->id) {
+            return $this->forbidden();
+        }
+
+        if ($section->image_path) {
+            Storage::disk('public')->delete($section->image_path);
+        }
+
+        $section->update(['image_path' => null]);
+
+        return response()->json([
+            "message" => "Image deleted succesfully"
+        ]);
+    }
+
     /**
      * Display the specified resource.
      */
@@ -188,7 +213,8 @@ class FormSectionController extends Controller
             "type"=>$section->type,
             "order"=>$section->order,
             "answer_key"=>$section->answer_key,
-            "is_quiz"=>$section->is_quiz
+            "is_quiz"=>$section->is_quiz,
+            "is_page_break"=>$section->is_page_break
         ]);
 
         $optionTypes = ["option", "checkbox", "dropdown"];
@@ -234,6 +260,7 @@ class FormSectionController extends Controller
             "type" => "string",
             "description" => "nullable",
             "is_quiz" => "boolean",
+            "is_page_break" => "nullable|boolean",
             "answer_key" => "nullable"
         ]);
 
