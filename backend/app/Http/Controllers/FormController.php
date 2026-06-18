@@ -24,6 +24,7 @@ class FormController extends Controller
                     "slug" => $form->slug,
                     "title" => $form->title,
                     "description" => $form->description,
+                    "created_at" => $form->created_at,
                     "total_questions" => $form->sections()->count(),
                 ];
             })
